@@ -1,0 +1,4 @@
+# The user-level ~/.cargo/config.toml selects rust-lld, which cannot locate the
+# system libc on Frontier login nodes. Use the system gcc driver for this repo.
+[target.x86_64-unknown-linux-gnu]
+linker = "gcc"

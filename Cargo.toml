@@ -1,0 +1,13 @@
+[workspace]
+resolver = "2"
+members = ["crates/tapir", "crates/tapir-gen", "crates/tapir-vocab", "crates/tapir-rocm", "examples/fakeblas", "examples/posixio"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "BSD-3-Clause"
+
+[profile.release]
+opt-level = 3
+debug = 1
+panic = "abort"

@@ -1,0 +1,18 @@
+[package]
+name = "tapir-rocm"
+description = "LD_PRELOAD interposer for rocBLAS/rocSOLVER/hipBLAS/hipSOLVER built on tapir."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "tapir_rocm"
+crate-type = ["cdylib"]
+
+[dependencies]
+tapir = { path = "../tapir" }
+tapir-vocab = { path = "../tapir-vocab" }
+
+[build-dependencies]
+tapir-gen = { path = "../tapir-gen" }
+tapir-vocab = { path = "../tapir-vocab" }

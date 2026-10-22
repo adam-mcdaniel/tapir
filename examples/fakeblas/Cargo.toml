@@ -1,0 +1,18 @@
+[package]
+name = "tapir-fakeblas"
+description = "Example/test: a tapir preload library for the fake BLAS in c/."
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[lib]
+name = "tapir_fakeblas"
+crate-type = ["cdylib"]
+
+[dependencies]
+tapir = { path = "../../crates/tapir" }
+tapir-vocab = { path = "../../crates/tapir-vocab" }
+
+[build-dependencies]
+tapir-gen = { path = "../../crates/tapir-gen" }
+tapir-vocab = { path = "../../crates/tapir-vocab" }

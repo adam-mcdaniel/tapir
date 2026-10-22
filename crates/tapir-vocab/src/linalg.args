@@ -1,0 +1,76 @@
+# Linear-algebra vocabulary (BLAS, LAPACK and similar APIs) for tapir-gen.
+#
+# Each line is `selector action` (see tapir_gen::Rules). Tags:
+#   dim     problem sizes and leading dimensions (m, n, k, lda, nnz, ...)
+#   count   repetition counts (batch_count, max_sweeps)
+#   stride  increments, strides and offsets (incx, stride_a, ...)
+#   flag    modes and options (trans, uplo, side, job*, enums, chars)
+#   scalar  numeric scalars passed by value (alpha, tolerances, ...)
+#
+# Rules naming a parameter beat kind rules (`:enum`); among name rules the
+# later line wins, so more specific patterns come after general ones.
+
+# Kinds: any enum or char not named below is a mode/option, any float a scalar.
+:enum   @flag
+:char   @flag
+:float  @scalar
+
+# Parameter names.
+i               @dim
+j               @dim
+k2              @dim
+k1              @dim
+nb              @dim
+size*           @dim
+*_size          @dim
+max_sweeps      @count
+iu              @dim
+il              @dim
+tol*            @scalar
+vu              @scalar
+vl              @scalar
+abstol          @scalar
+beta            @scalar
+alpha           @scalar
+solution_index  @flag
+range           @flag
+job*            @flag
+jobvt           @flag
+jobu            @flag
+jobz            @flag
+itype           @flag
+fast_alg        @flag
+evals           @flag
+srange          @flag
+esort           @flag
+eorder          @flag
+erange          @flag
+*vect           @flag
+evect           @flag
+storev          @flag
+direct          @flag
+flags           @flag
+algo            @flag
+compute*        @flag
+*type           @flag
+*_type          @flag
+diag            @flag
+side            @flag
+uplo            @flag
+trans*          @flag
+shift*          @stride
+offset*         @stride
+lwork           @dim
+nnz             @dim
+ku              @dim
+kl              @dim
+k               @dim
+n               @dim
+m               @dim
+ld*             @dim
+*stride         @stride
+stride*         @stride
+inc*            @stride
+nrhs            @dim
+batchcount      @count
+batch_count     @count

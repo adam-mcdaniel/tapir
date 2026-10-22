@@ -1,0 +1,13 @@
+[package]
+name = "tapir-posixio"
+description = "Example/test: a hand-written tapir preload library for C stdio and qsort."
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[lib]
+name = "tapir_posixio"
+crate-type = ["cdylib"]
+
+[dependencies]
+tapir = { path = "../../crates/tapir" }

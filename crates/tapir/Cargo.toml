@@ -1,0 +1,8 @@
+[package]
+name = "tapir"
+description = "Tracing And Profiling Interposition Runtime: wrap C libraries, capture arguments, feed modular profilers."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]

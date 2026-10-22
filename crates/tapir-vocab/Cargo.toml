@@ -1,0 +1,8 @@
+[package]
+name = "tapir-vocab"
+description = "Shared argument vocabularies (tag rules and default keys) for tapir wrappers."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
