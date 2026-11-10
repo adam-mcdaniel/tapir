@@ -24,15 +24,18 @@ Zero runtime dependencies. Three layers:
 |---|---|---|
 | Core | `crates/tapir` | C calling conventions, capture modes, tags (as opaque strings), intervals, profilers, output |
 | Vocabulary | `crates/tapir-vocab` | one API family: which parameter names get which tags, and how to bucket them |
-| Wrapper library | `crates/tapir-rocm`, `examples/*` | one concrete library: its headers, its types |
+| Wrapper library | `crates/tapir-rocm`, `crates/tapir-cuda`, `examples/*` | one concrete library: its headers, its types |
 
 ## Quick start
 
 ```sh
 cd tapir
-cargo build --release          # all crates; tapir-rocm needs ROCm headers (ROCM_PATH)
+cargo build --release                 # core, generator, examples: no GPU toolkit needed
+cargo build --release -p tapir-rocm   # AMD:    libtapir_rocm.so, needs ROCm headers (ROCM_PATH)
+cargo build --release -p tapir-cuda   # NVIDIA: libtapir_cuda.so, needs CUDA headers (CUDA_HOME)
 
-# Profile the ROCm math libraries (rocBLAS, rocSOLVER, hipBLAS, hipSOLVER):
+# Profile the GPU math libraries and runtime calls of whichever was built
+# (rocBLAS, rocSOLVER, hipBLAS, hipSOLVER, rocSPARSE, HIP; or cuBLAS, cuSOLVER, cuSPARSE, CUDA):
 bin/tapir-run -v -p bbv,summary -- ./app
 # A different wrapper library, here the stdio example:
 bin/tapir-run -l target/release/libtapir_posixio.so -p summary,trace -- ./app
@@ -44,7 +47,27 @@ ls tapir-out/
 
 `tapir-run` only sets `LD_PRELOAD` and a few environment variables:
 `TAPIR_PROFILERS=bbv LD_PRELOAD=$PWD/target/release/libtapir_rocm.so ./app`
-is equivalent.
+is equivalent (`libtapir_cuda.so` on an NVIDIA machine).
+
+## Either vendor
+
+`libtapir_rocm.so` and `libtapir_cuda.so` are the same tool for the two GPU
+stacks, so a profile can be taken on whichever machine is at hand:
+
+| | `tapir-rocm` (AMD) | `tapir-cuda` (NVIDIA) |
+|---|---|---|
+| Math libraries, generated from the installed headers | rocBLAS, rocSOLVER, hipBLAS, hipSOLVER, rocSPARSE | cuBLAS, cuSOLVER (Dn, Sp, Rf), cuSPARSE |
+| Runtime: allocation and free, copies, memsets | `hipMalloc`, `hipMemcpy`, ... (`src/hip.rs`) | `cudaMalloc`, `cudaMemcpy`, ... (`src/cudart.rs`) |
+| Kernel launches, as kernel + blocks + threads | `hipLaunchKernel`, ... | `cudaLaunchKernel`, `cudaLaunchKernelExC`, ... |
+| Wait for the GPU after each call | `TAPIR_GPU_SYNC=device` | `TAPIR_GPU_SYNC=device` |
+
+Both tag arguments with the `linalg` vocabulary and use its key rules, and the
+profilers, the output files and the C ABI are the core's, so everything
+downstream of a profile (the Nuggets hook, `python/tapir_read.py`) reads
+either one unchanged. The block names and hashes are each vendor's own
+(`rocsolver_zgetrf` on one side, `cusolverDnZgetrf` on the other): a profile
+describes the run on the machine it was taken on, and blocks are not matched
+across vendors.
 
 Integrations: [Nuggets CPU + GPU simulation points](integrations/nuggets/README.md).
 
@@ -129,11 +152,20 @@ Profiler options:
 | `trace` | `batch=N`, `format=` |
 | all | `lib=a;b`, `fn=glob;glob`, `nested=0\|1`, `as=name` |
 
-`tapir-rocm` adds `TAPIR_GPU_SYNC=device` (wait for the GPU after each call,
-so durations cover execution, not just the asynchronous launch) and, at build
-time, `ROCM_PATH`, `TAPIR_ROCM_LIBS=rocblas,rocsolver,hipblas,hipsolver` and
-`TAPIR_ROCM_INCLUDE` / `TAPIR_ROCM_EXCLUDE` (`;`-separated name globs). Setup
-and query APIs (`*_create*`, `*_set_*`, `*_bufferSize`…) are excluded by default.
+`tapir-rocm` and `tapir-cuda` add `TAPIR_GPU_SYNC=device` (wait for the GPU
+after each call, so durations cover execution, not just the asynchronous
+launch). At build time:
+
+| | `tapir-rocm` | `tapir-cuda` |
+|---|---|---|
+| Toolkit root | `ROCM_PATH` | `CUDA_HOME` (or `CUDA_PATH`); `TAPIR_CUDA_INCLUDE_DIRS=a:b` adds include directories |
+| Libraries to wrap | `TAPIR_ROCM_LIBS=rocblas,rocsolver,hipblas,hipsolver,rocsparse` | `TAPIR_CUDA_LIBS=cublas,cusolver,cusparse` (`none`: runtime calls only) |
+| Name globs, `;`-separated | `TAPIR_ROCM_INCLUDE` / `TAPIR_ROCM_EXCLUDE` | `TAPIR_CUDA_INCLUDE` / `TAPIR_CUDA_EXCLUDE` |
+
+Setup and query APIs (`*_create*`, `*_set_*`, `*_bufferSize`…) are excluded by
+default. An NVIDIA HPC SDK's `math_libs/<version>/include` is found from
+`CUDA_HOME=<sdk>/cuda/<version>`. `OUT_DIR/report.txt` lists what was wrapped
+and what was skipped.
 
 ## Extending
 
@@ -177,6 +209,8 @@ g.rules.parse_text(tapir_vocab::LINALG.args)?;     // a shared vocabulary, optio
 g.rules.add("mylib_open.name", "cstr@path")?;      // your own rules win
 g.exclude("*_create*");
 g.header("/path/mylib.h", "mylib", &["MYLIB_EXPORT"])?;   // [] = every prototype
+// Export macro not the first word (`ret MYLIB_API name(...)`), types from the header itself:
+// g.types.scan(&text); g.ignore("MYLIB_CALL"); g.source_marked(&text, "mylib", &["MYLIB_API"]);
 std::fs::write(out_dir.join("wrappers.rs"), g.render())?;
 ```
 
@@ -268,7 +302,9 @@ tell such calls apart by `lib`.
 crates/tapir/        core: capture modes, interpose!, runtime, KeyPolicy/BlockTable, profilers, sinks, C ABI
 crates/tapir-gen/    C header -> interpose! generator (library + CLI)
 crates/tapir-vocab/  shared vocabularies (linalg)
-crates/tapir-rocm/   libtapir_rocm.so: ROCm math libraries, generated from $ROCM_PATH headers
+crates/tapir-rocm/   libtapir_rocm.so: ROCm math libraries, generated from $ROCM_PATH headers, and the HIP runtime
+crates/tapir-cuda/   libtapir_cuda.so: CUDA math libraries, generated from $CUDA_HOME headers, and the CUDA runtime;
+                     test/run.sh checks it without a GPU or a CUDA toolkit
 include/tapir.h      C ABI + runtime-resolved helpers
 examples/posixio/    hand-written wrappers for stdio and qsort (strings, callbacks); run.sh checks them
 examples/fakeblas/   GPU-free BLAS-like test library: generated wrappers + a custom profiler
@@ -290,6 +326,18 @@ bin/tapir-run        launcher
 - `tapir-rocm` assumes LP64 `rocblas_int` (`i32`), and times asynchronous
   calls at launch unless `TAPIR_GPU_SYNC=device`. The first rocBLAS call also
   includes library initialisation (~0.2 s on an MI210).
+- `tapir-cuda` sees the calls a program makes into `libcudart.so` and the
+  math libraries' shared objects. A program linked against the static
+  libraries (`-lcublas_static`, `-cudart static`) makes none; link the shared
+  ones. Launches inside cuBLAS/cuSOLVER/cuSPARSE are not visible (they carry
+  their own runtime), which matches `tapir-rocm`, where they are nested and
+  not recorded. The generic cuSPARSE and rocSPARSE APIs pass sizes inside
+  descriptors, so their blocks are keyed by name and options only. Functions
+  that take a complex number by value (12 in CUDA 12.9, all in cuSOLVER's
+  sparse eigenvalue API) are not wrapped.
 - Tested against real rocBLAS/rocSOLVER (ROCm 6.4.2, MI210 on a Frontier
   login node) and glibc stdio; not yet with a full Nuggets-instrumented app on
-  a compute node.
+  a compute node. `tapir-cuda` is generated and type-checked against the CUDA
+  12.9 headers (cuBLAS 12.9.1, cuSOLVER 11.7.5, cuSPARSE 12.5.10) and tested
+  against a fake CUDA library on x86-64 and aarch64 (`crates/tapir-cuda/test/run.sh`);
+  not yet run on a GPU.

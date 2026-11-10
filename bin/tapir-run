@@ -7,7 +7,8 @@
 #   -k RULES      sets TAPIR_KEY, extra key rules for every profiler, e.g. '@size:log2/2'
 #   -o OUT        output template (TAPIR_OUT), e.g. 'run1/{stream}.{tag}.{ext}'
 #   -l LIB.so     tapir library to preload (repeatable). Default: $TAPIR_LIB
-#                 (a ':'-separated list), else libtapir_rocm.so from ../target/release
+#                 (a ':'-separated list), else the GPU library built in
+#                 ../target/release: libtapir_rocm.so (AMD) or libtapir_cuda.so (NVIDIA)
 #   -v            verbose: list profilers and written files on stderr
 #
 # Works under srun/mpirun (srun ... tapir-run -p bbv -- ./app). Existing
@@ -22,7 +23,7 @@ while [[ $# -gt 0 ]]; do
     -o) export TAPIR_OUT="$2"; shift 2 ;;
     -l) libs+=("$(realpath "$2")"); shift 2 ;;
     -v) export TAPIR_VERBOSE=1; shift ;;
-    -h|--help) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     --) shift; break ;;
     -*) echo "tapir-run: unknown option $1" >&2; exit 2 ;;
     *) break ;;
@@ -30,10 +31,12 @@ while [[ $# -gt 0 ]]; do
 done
 [[ $# -gt 0 ]] || { echo "tapir-run: no command given (see -h)" >&2; exit 2; }
 if [[ ${#libs[@]} -eq 0 ]]; then
-  IFS=: read -r -a libs <<< "${TAPIR_LIB:-$here/../target/release/libtapir_rocm.so}"
+  default=$here/../target/release/libtapir_rocm.so
+  [[ -f "$default" || ! -f "$here/../target/release/libtapir_cuda.so" ]] || default=$here/../target/release/libtapir_cuda.so
+  IFS=: read -r -a libs <<< "${TAPIR_LIB:-$default}"
 fi
 for l in "${libs[@]}"; do
-  [[ -f "$l" ]] || { echo "tapir-run: $l not found (build with: cargo build --release)" >&2; exit 2; }
+  [[ -f "$l" ]] || { echo "tapir-run: $l not found (build with: cargo build --release -p tapir-rocm, or -p tapir-cuda)" >&2; exit 2; }
 done
 preload=$(IFS=:; echo "${libs[*]}")
 export LD_PRELOAD="$preload${LD_PRELOAD:+:$LD_PRELOAD}"

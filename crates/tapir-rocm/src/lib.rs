@@ -1,5 +1,6 @@
 //! `libtapir_rocm.so`: LD_PRELOAD it to profile rocBLAS / rocSOLVER /
-//! hipBLAS / hipSOLVER calls.
+//! hipBLAS / hipSOLVER / rocSPARSE calls, and the HIP runtime's allocation,
+//! copy, memset and kernel-launch calls (`hip.rs`).
 //!
 //! ```sh
 //! TAPIR_PROFILERS="bbv,summary" LD_PRELOAD=libtapir_rocm.so ./app
@@ -36,3 +37,5 @@ tapir::preload!(|b| {
 });
 
 include!(concat!(env!("OUT_DIR"), "/wrappers.rs"));
+
+mod hip;

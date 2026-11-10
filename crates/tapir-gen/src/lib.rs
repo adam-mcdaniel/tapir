@@ -101,6 +101,45 @@ impl TypeMap {
         self
     }
 
+    /// Register the types a header declares with `typedef`: pointers to a
+    /// struct as handles (`typedef struct ctx* handle_t;`), enums as enums
+    /// (`typedef enum { ... } mode_t;`) and aliases of a known scalar as that
+    /// scalar (`typedef int lib_int;`). Everything else is left alone.
+    /// Returns the number of types added.
+    pub fn scan(&mut self, text: &str) -> usize {
+        let clean = strip_comments_and_cpp(text);
+        let before = self.types.len();
+        for stmt in clean.split(';') {
+            let Some(at) = stmt.rfind("typedef ") else { continue };
+            let decl = stmt[at + 8..].trim();
+            if decl.contains('(') {
+                continue; // function pointers
+            }
+            // The alias is the first name after the closing brace or the
+            // pointer star: an attribute macro may follow it.
+            let tail = decl.rsplit('}').next().unwrap_or(decl);
+            let names = |s: &str| s.split(|c: char| !(c.is_alphanumeric() || c == '_')).filter(|w| !w.is_empty()).map(str::to_owned).collect::<Vec<_>>();
+            let words = names(tail);
+            let has = |w: &str| decl.split_whitespace().any(|x| x == w);
+            if decl.starts_with("enum") {
+                if let Some(alias) = if decl.contains('}') { words.first() } else { words.get(2) } {
+                    self.enumeration(alias);
+                }
+            } else if has("struct") && !decl.contains('{') && tail.matches('*').count() == 1 {
+                if let Some(alias) = names(tail.rsplit('*').next().unwrap_or("")).first() {
+                    self.handle(alias);
+                }
+            } else if !decl.contains(['{', '*', '[']) && words.len() >= 2 {
+                let base = words[..words.len() - 1].join(" ");
+                if let Some(CType::Scalar(r)) = self.types.get(&base) {
+                    let r = *r;
+                    self.scalar(&words[words.len() - 1], r);
+                }
+            }
+        }
+        self.types.len() - before
+    }
+
     fn get(&self, c: &str) -> Option<&CType> {
         self.types.get(c)
     }
@@ -249,6 +288,8 @@ pub struct Generator {
     /// Name globs to exclude.
     exclude: Vec<String>,
     include: Vec<String>,
+    /// Words dropped from every statement (calling-convention macros).
+    ignore: Vec<String>,
     /// By-reference calling convention (Fortran): read tagged scalar
     /// pointers with `deref` and `char` pointers with `deref_chr`.
     by_ref: bool,
@@ -261,7 +302,7 @@ const KEYWORDS: &[&str] = &["type", "fn", "ref", "mod", "in", "loop", "match", "
 
 impl Generator {
     pub fn new(types: TypeMap) -> Self {
-        Generator { types, rules: Rules::default(), funcs: BTreeMap::new(), exclude: Vec::new(), include: Vec::new(), by_ref: false, skipped: Vec::new() }
+        Generator { types, rules: Rules::default(), funcs: BTreeMap::new(), exclude: Vec::new(), include: Vec::new(), ignore: Vec::new(), by_ref: false, skipped: Vec::new() }
     }
 
     /// By-reference calling convention (Fortran): scalars are passed by host
@@ -282,6 +323,39 @@ impl Generator {
     pub fn include(&mut self, pattern: &str) -> &mut Self {
         self.include.push(pattern.into());
         self
+    }
+
+    /// Drop `word` wherever it stands alone in a prototype: a macro that
+    /// expands to nothing or to a calling convention (`CUBLASWINAPI`,
+    /// `__host__`).
+    pub fn ignore(&mut self, word: &str) -> &mut Self {
+        self.ignore.push(word.into());
+        self
+    }
+
+    /// Parse a header file; see [`Generator::source_marked`].
+    pub fn header_marked(&mut self, path: impl AsRef<Path>, lib: &str, markers: &[&str]) -> std::io::Result<usize> {
+        let text = std::fs::read_to_string(path)?;
+        Ok(self.source_marked(&text, lib, markers))
+    }
+
+    /// Like [`Generator::source`], for headers whose export macro is not the
+    /// first word of a prototype: every statement that contains one of
+    /// `markers` as a word is taken, wherever the marker stands
+    /// (`ret MARKER name(params);`). A macro call in front of the prototype
+    /// (`LIB_DEPRECATED(new_name) ret MARKER name(params);`) is dropped.
+    pub fn source_marked(&mut self, text: &str, lib: &str, markers: &[&str]) -> usize {
+        let clean = strip_comments_and_cpp(text);
+        let mut added = 0;
+        for stmt in clean.split([';', '{', '}']) {
+            let words: Vec<&str> = stmt.split_whitespace().collect();
+            let Some(at) = words.iter().position(|w| markers.contains(w)) else { continue };
+            // Words before the marker: the return type, after any macro call.
+            let start = words[..at].iter().rposition(|w| w.contains(')')).map_or(0, |i| i + 1);
+            let body = words[start..].iter().filter(|w| !markers.contains(w)).copied().collect::<Vec<_>>().join(" ");
+            added += self.add_proto(&body, lib);
+        }
+        added
     }
 
     /// Parse a header file; see [`Generator::source`].
@@ -306,14 +380,24 @@ impl Generator {
                     None => continue,
                 }
             };
-            if let Some(f) = self.parse_proto(body, lib) {
-                if !self.funcs.contains_key(&f.name) {
-                    added += 1;
-                    self.funcs.insert(f.name.clone(), f);
-                }
-            }
+            added += self.add_proto(body, lib);
         }
         added
+    }
+
+    fn add_proto(&mut self, body: &str, lib: &str) -> usize {
+        let body = if self.ignore.is_empty() {
+            body.to_owned()
+        } else {
+            body.split_whitespace().filter(|w| !self.ignore.iter().any(|i| i == w)).collect::<Vec<_>>().join(" ")
+        };
+        match self.parse_proto(&body, lib) {
+            Some(f) if !self.funcs.contains_key(&f.name) => {
+                self.funcs.insert(f.name.clone(), f);
+                1
+            }
+            _ => 0,
+        }
     }
 
     fn parse_proto(&mut self, s: &str, lib: &str) -> Option<Func> {
@@ -667,6 +751,45 @@ mod tests {
         g.source(HEADER, "img", &["IMG_API"]);
         assert!(g.functions().all(|f| f.name != "img_resize"));
         assert!(g.skipped.iter().any(|(f, r)| f == "img_resize" && r.contains("mode `cstr`")), "{:?}", g.skipped);
+    }
+
+    #[test]
+    fn markers_anywhere_and_scanned_types() {
+        const H: &str = r#"
+            extern "C" {
+            typedef struct libContext* libHandle_t;
+            typedef const struct libMat* libConstMat_t;
+            typedef struct libInfo* libInfo_t LIB_DEPRECATED_TYPE;
+            typedef enum { LIB_A = 0, LIB_B = 1 } libMode_t;
+            typedef enum libType_e {
+                LIB_X
+            } libType;
+            typedef int lib_int;
+            typedef struct { float re, im; } libComplex;
+            typedef void (*libCallback)(const char* msg);
+            LIBAPI libStatus LIBCALL libGemm_v2(libHandle_t h, libMode_t trans, lib_int n, const double* a, int64_t lda);
+            libStatus LIBAPI
+            libSolve(libHandle_t h, libConstMat_t a, libType t, int n);
+            LIB_DEPRECATED(libSolve)
+            libStatus LIBAPI libOld(libHandle_t h, int n);
+            libStatus LIBAPI libByValue(libHandle_t h, libComplex alpha);
+            libStatus libNotExported(libHandle_t h);
+            }
+        "#;
+        let mut t = TypeMap::c_basic();
+        t.enumeration("libStatus");
+        assert_eq!(t.scan(H), 6);
+        assert_eq!(t.get("libInfo_t"), Some(&CType::Handle));
+        assert_eq!(t.get("lib_int"), Some(&CType::Scalar("i32")));
+        assert_eq!(t.get("libComplex"), None);
+        let mut g = Generator::new(t);
+        g.ignore("LIBCALL");
+        assert_eq!(g.source_marked(H, "lib", &["LIBAPI"]), 3);
+        let out = g.render();
+        assert!(out.contains("fn libGemm_v2(h: *mut c_void => skip, trans: i32 => val, n: i32 => val, a: *const c_void => skip, lda: i64 => val) -> i32;"), "{out}");
+        assert!(out.contains("fn libSolve(h: *mut c_void => skip, a: *mut c_void => skip, t: i32 => val, n: i32 => val) -> i32;"), "{out}");
+        assert!(out.contains("fn libOld(h: *mut c_void => skip, n: i32 => val) -> i32;"), "{out}");
+        assert_eq!(g.skipped.len(), 1, "{:?}", g.skipped);
     }
 
     #[test]

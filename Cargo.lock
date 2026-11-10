@@ -7,6 +7,15 @@ name = "tapir"
 version = "0.1.0"
 
 [[package]]
+name = "tapir-cuda"
+version = "0.1.0"
+dependencies = [
+ "tapir",
+ "tapir-gen",
+ "tapir-vocab",
+]
+
+[[package]]
 name = "tapir-fakeblas"
 version = "0.1.0"
 dependencies = [

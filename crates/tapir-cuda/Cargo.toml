@@ -1,0 +1,18 @@
+[package]
+name = "tapir-cuda"
+description = "LD_PRELOAD interposer for cuBLAS/cuSOLVER/cuSPARSE and the CUDA runtime built on tapir."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "tapir_cuda"
+crate-type = ["cdylib"]
+
+[dependencies]
+tapir = { path = "../tapir" }
+tapir-vocab = { path = "../tapir-vocab" }
+
+[build-dependencies]
+tapir-gen = { path = "../tapir-gen" }
+tapir-vocab = { path = "../tapir-vocab" }

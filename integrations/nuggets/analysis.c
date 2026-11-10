@@ -8,6 +8,8 @@
  *
  *     TAPIR_PROFILERS=bbv LD_PRELOAD=/path/to/libtapir_rocm.so ./app-analysis-exec ...
  *
+ * (libtapir_cuda.so on an NVIDIA machine: same hook, same output.)
+ *
  * Without tapir loaded the hook behaves exactly like the CPU-only original
  * (the gpu_* rows are simply absent).
  *

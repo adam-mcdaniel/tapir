@@ -4,6 +4,11 @@
 //!   --lib NAME            library tag for following headers (default: header stem)
 //!   --export MACRO        only take prototypes prefixed by MACRO (repeatable);
 //!                         without it every top-level prototype is taken
+//!   --marker MACRO        like --export, but MACRO may stand anywhere in the
+//!                         prototype (`ret MACRO name(...)`); repeatable
+//!   --ignore WORD         drop WORD from prototypes (calling-convention macros)
+//!   --scan-types          also register the handles, enums and scalar aliases
+//!                         each following header declares with typedef
 //!   --type NAME=KIND      add a type: KIND is a Rust scalar (i32, f64, ...),
 //!                         `enum` or `handle` (C's basic types are built in)
 //!   --arg SELECTOR=ACTION parameter rule, e.g. `n=@size`, `path=cstr@path`,
@@ -27,6 +32,8 @@ fn main() {
     let mut g = Generator::new(TypeMap::c_basic());
     let mut lib: Option<String> = None;
     let mut exports: Vec<String> = Vec::new();
+    let mut markers: Vec<String> = Vec::new();
+    let mut scan_types = false;
     let mut report = false;
     let mut it = args.iter();
     while let Some(a) = it.next() {
@@ -34,6 +41,11 @@ fn main() {
         match a.as_str() {
             "--lib" => lib = Some(val()),
             "--export" => exports.push(val()),
+            "--marker" => markers.push(val()),
+            "--ignore" => {
+                g.ignore(&val());
+            }
+            "--scan-types" => scan_types = true,
             "--type" => {
                 let v = val();
                 let (n, k) = v.split_once('=').unwrap_or_else(|| die("--type wants NAME=KIND"));
@@ -65,9 +77,16 @@ fn main() {
             "--report" => report = true,
             path => {
                 let tag = lib.clone().unwrap_or_else(|| std::path::Path::new(path).file_stem().unwrap().to_string_lossy().into_owned());
-                let ex: Vec<&str> = exports.iter().map(String::as_str).collect();
-                if let Err(e) = g.header(path, &tag, &ex) {
-                    die(&format!("{path}: {e}"));
+                let text = std::fs::read_to_string(path).unwrap_or_else(|e| die(&format!("{path}: {e}")));
+                if scan_types {
+                    g.types.scan(&text);
+                }
+                if markers.is_empty() {
+                    let ex: Vec<&str> = exports.iter().map(String::as_str).collect();
+                    g.source(&text, &tag, &ex);
+                } else {
+                    let mk: Vec<&str> = markers.iter().map(String::as_str).collect();
+                    g.source_marked(&text, &tag, &mk);
                 }
             }
         }

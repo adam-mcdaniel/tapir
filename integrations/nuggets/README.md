@@ -13,12 +13,17 @@ with `tapir_try_vector` and writes it next to the CPU rows of the same region.
    srun -A csc688 -N1 -n1 --gpus-per-task=1 \
        tapir/bin/tapir-run -p 'bbv' -- ./build/llvm-exec/app-analysis-exec ...
    ```
+   On an NVIDIA machine, run the CUDA build of the same analysis binary under
+   the CUDA wrappers instead; the hook and its output are the same:
+   ```sh
+   tapir/bin/tapir-run -l tapir/target/release/libtapir_cuda.so -p 'bbv' -- ./app-analysis-exec ...
+   ```
 3. Open `simpoint_analysis.ipynb` unchanged. Per region the hook writes
    `gpu_bb_id,<region>,<hash>...` and `gpu_bbv,<region>,<calls>...` into
    `analysis-output.csv` (path: `NUGGET_ANALYSIS_OUTPUT`; profiler sampled:
    `NUGGET_GPU_PROFILER`, default `bbv`).
 
-GPU "basic blocks" come from `libtapir_rocm.so`, whose parameters are tagged
+GPU "basic blocks" come from `libtapir_rocm.so` (or `libtapir_cuda.so`), whose parameters are tagged
 with the `linalg` vocabulary (`crates/tapir-vocab`): sizes (`@dim`) and counts
 (`@count`) are bucketed by bit length, modes and strides kept exact, scalars
 and pointers ignored. To match the notebook's `GPU_DIM_BITS=3`, use

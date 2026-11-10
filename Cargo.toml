@@ -1,6 +1,10 @@
 [workspace]
 resolver = "2"
-members = ["crates/tapir", "crates/tapir-gen", "crates/tapir-vocab", "crates/tapir-rocm", "examples/fakeblas", "examples/posixio"]
+members = ["crates/tapir", "crates/tapir-gen", "crates/tapir-vocab", "crates/tapir-rocm", "crates/tapir-cuda", "examples/fakeblas", "examples/posixio"]
+# A plain `cargo build` builds the vendor-neutral crates; pick the GPU library
+# for the machine with `-p tapir-rocm` (needs ROCm headers) or `-p tapir-cuda`
+# (needs CUDA headers).
+default-members = ["crates/tapir", "crates/tapir-gen", "crates/tapir-vocab", "examples/fakeblas", "examples/posixio"]
 
 [workspace.package]
 version = "0.1.0"
