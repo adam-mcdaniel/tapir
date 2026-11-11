@@ -1,0 +1,62 @@
+// How tapir's components relate: what is decided when the wrapper library
+// is built, and what happens every time the program runs.
+digraph pieces {
+    graph [rankdir=TB, bgcolor="white", pad=0.3, nodesep=0.45, ranksep=0.55,
+           fontname="Helvetica", fontsize=13, newrank=true];
+    node  [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=12,
+           color="#4a5568", fillcolor="#f7fafc", margin="0.2,0.1"];
+    edge  [fontname="Helvetica", fontsize=10, color="#4a5568", fontcolor="#1a202c"];
+
+    subgraph cluster_build {
+        label=<<b>Built once: the wrapper library</b>>; labeljust=l;
+        style="rounded,dashed"; color="#2b6cb0"; margin=14;
+
+        header [label=<<b>C header</b><br/><font point-size="10">e.g. cublas_api.h, pix.h</font>>];
+        vocab  [label=<<b>Vocabulary</b> (optional)<br/><font point-size="10">shared tag rules + default key rules<br/>for a family of libraries</font>>,
+                fillcolor="#faf5ff", color="#6b46c1"];
+        gen    [label=<<b>tapir-gen</b> (optional)<br/><font point-size="10">writes wrapper declarations<br/>from the header</font>>];
+        decls  [label=<<b>Wrapper declarations</b><br/><font point-size="10">which functions, and for each argument<br/>its mode and tag</font>>,
+                fillcolor="#ebf8ff", color="#2b6cb0"];
+        setup  [label=<<b>Setup</b><br/><font point-size="10">default key rules,<br/>default profilers</font>>,
+                fillcolor="#ebf8ff", color="#2b6cb0"];
+        lib    [label=<<b>Wrapper library (.so)</b><br/><font point-size="10">wrappers + tapir runtime</font>>,
+                fillcolor="#ebf8ff", color="#2b6cb0", penwidth=2];
+
+        byhand [label="or write them by hand", shape=plain, style="", fontcolor="#4a5568", fontsize=11];
+        header -> gen;
+        byhand -> decls [style=dotted, arrowhead=open];
+        vocab  -> gen   [label=" tag rules"];
+        gen    -> decls [label=" generates"];
+        vocab  -> setup [label=" key rules"];
+        decls  -> lib;
+        setup  -> lib;
+    }
+
+    subgraph cluster_run {
+        label=<<b>Every run</b>>; labeljust=l;
+        style="rounded,dashed"; color="#2f855a"; margin=14;
+
+        program [label=<<b>Your program</b><br/><font point-size="10">unchanged</font>>];
+        wrapper [label=<<b>Wrapper</b><br/><font point-size="10">reads arguments by mode,<br/>calls the real function, times it</font>>,
+                 fillcolor="#ebf8ff", color="#2b6cb0"];
+        real    [label=<<b>Real library</b>>];
+        record  [label=<<b>Call record</b><br/><font point-size="10">function, argument values + tags,<br/>time, depth, thread</font>>,
+                 shape=note, style=filled, fillcolor="#fffff0", color="#b7791f"];
+        prof    [label=<<b>Profilers</b><br/><font point-size="10">group calls into blocks with key rules,<br/>split them into intervals</font>>,
+                 fillcolor="#f0fff4", color="#2f855a"];
+        files   [label=<<b>Output files</b><br/><font point-size="10">tapir-out/...</font>>,
+                 shape=note, style=filled, fillcolor="#fffff0", color="#b7791f"];
+        env     [label=<<b>Your settings</b><br/><font point-size="10">TAPIR_PROFILERS, TAPIR_KEY, ...</font>>,
+                 shape=plain, style="", fontcolor="#4a5568"];
+
+        program -> wrapper [label=" calls"];
+        wrapper -> real    [label=" forwards"];
+        wrapper -> record  [label=" builds"];
+        record  -> prof;
+        prof    -> files   [label=" at exit /\n each interval"];
+        env     -> prof    [style=dotted, arrowhead=open];
+    }
+
+    lib -> wrapper [label=" LD_PRELOAD", style=bold, color="#2b6cb0", fontcolor="#2b6cb0"];
+    { rank=same; header; vocab; }
+}

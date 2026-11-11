@@ -1,0 +1,10 @@
+[book]
+title = "The tapir Book"
+description = "Tracing And Profiling Interposition Runtime: a step-by-step guide to using tapir and writing wrappers."
+authors = ["Adam McDaniel"]
+language = "en"
+src = "src"
+
+[output.html]
+default-theme = "light"
+preferred-dark-theme = "navy"

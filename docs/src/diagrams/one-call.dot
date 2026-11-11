@@ -1,0 +1,24 @@
+// What happens when the program calls a wrapped function.
+digraph one_call {
+    graph [rankdir=LR, bgcolor="white", pad=0.3, nodesep=0.6, ranksep=1.1,
+           fontname="Helvetica", fontsize=12];
+    node  [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=13,
+           color="#4a5568", fillcolor="#f7fafc", margin="0.25,0.15"];
+    edge  [fontname="Helvetica", fontsize=11, color="#4a5568", fontcolor="#1a202c"];
+
+    app  [label=<<b>Your program</b><br/><font point-size="11">unchanged, not recompiled</font>>];
+    wrap [label=<<b>tapir's fwrite</b><br/><font point-size="11">in libtapir_posixio.so,<br/>loaded first by LD_PRELOAD</font>>,
+          fillcolor="#ebf8ff", color="#2b6cb0"];
+    real [label=<<b>the real fwrite</b><br/><font point-size="11">in libc.so</font>>];
+    prof [label=<<b>Profilers</b><br/><font point-size="11">bbv, summary, trace, ...</font>>,
+          fillcolor="#f0fff4", color="#2f855a"];
+
+    app  -> wrap [label="1. calls fwrite(buf, 1, 1000, f)"];
+    wrap -> real [label="2. passes the same call on"];
+    real -> wrap [label="3. returns 1000", style=dashed];
+    wrap -> app  [label="5. returns 1000 to the program", style=dashed];
+    wrap -> prof [xlabel="4. reports: fwrite(size=1, n=1000),\l    took 1.7 µs\l"];
+
+    { rank=same; app; }
+    { rank=same; wrap; prof; }
+}

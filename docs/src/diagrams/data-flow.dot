@@ -1,0 +1,26 @@
+// Where recorded calls go, and how a program can talk to tapir while it runs.
+digraph data_flow {
+    graph [rankdir=LR, bgcolor="white", pad=0.3, nodesep=0.5, ranksep=1.0,
+           fontname="Helvetica", fontsize=12];
+    node  [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=13,
+           color="#4a5568", fillcolor="#f7fafc", margin="0.25,0.15"];
+    edge  [fontname="Helvetica", fontsize=11, color="#4a5568", fontcolor="#1a202c"];
+
+    wrapped [label=<<b>Wrapped calls</b><br/><font point-size="11">fwrite, cublasDgemm, ...</font>>,
+             fillcolor="#ebf8ff", color="#2b6cb0"];
+    record  [label=<<b>tapir_record()</b><br/><font point-size="11">work tapir cannot wrap</font>>,
+             fillcolor="#ebf8ff", color="#2b6cb0"];
+    prof    [label=<<b>Profilers</b><br/><font point-size="11">bbv, summary, trace, yours</font>>,
+             fillcolor="#f0fff4", color="#2f855a"];
+    files   [label=<<b>Output files</b><br/><font point-size="11">tapir-out/summary.p123.csv<br/>tapir-out/bbv.p123.bb<br/>...</font>>,
+             shape=note, style=filled, fillcolor="#fffff0", color="#b7791f"];
+    app     [label=<<b>Your program</b><br/><font point-size="11">optional: calls tapir's C API</font>>];
+
+    wrapped -> prof  [label="A. every call"];
+    record  -> prof  [label="B. reported calls"];
+    prof    -> files [label="C. written at exit,\nand at each interval"];
+    app     -> prof  [label="D. tapir_interval(): close an interval"];
+    prof    -> app   [label="E. tapir_vector(), tapir_snapshot():\nread the current interval", style=dashed];
+
+    { rank=same; wrapped; record; app; }
+}
